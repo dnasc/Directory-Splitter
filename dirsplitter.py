@@ -44,7 +44,7 @@ def get_file_list(dir_path: str) -> list:
     :return: File list.
     """
 
-    return [os.path.join(dir_path, f) for f in os.listdir(dir_path) if os.path.isfile(os.path.join(dir_path, f))]
+    return sorted([os.path.join(dir_path, f) for f in os.listdir(dir_path) if os.path.isfile(os.path.join(dir_path, f))])
 
 
 def get_ith_sub_dir_name(split_dir_index: int, num_split_dirs: int) -> str:
@@ -71,7 +71,8 @@ def get_file_split_dir_index(file_index: int, num_split_dirs: int, num_files: in
     :return: Split directory index.
     """
 
-    return int(math.ceil(float(file_index) / (num_files / num_split_dirs)))
+    num_files_p_split = num_files // num_split_dirs
+    return (file_index - 1) // num_files_p_split + 1 if file_index <= num_files_p_split * num_split_dirs else num_split_dirs
 
 
 @log_decorator('create split directories')
@@ -117,22 +118,33 @@ def split_directory(in_dir_path: str, out_dir_path: str, command: str, num_split
     file_list = get_file_list(in_dir_path)
     num_files = len(file_list)
 
+    logger.info('{} files to be split into {} directories'.format(num_files, num_split_dirs))
+
     create_split_dirs(out_dir_path, num_split_dirs)
 
     copy_or_move_func = shutil.move if command == 'm' else shutil.copy
+
+    last_update_dir_index = 0
+    n_k_print = 100
 
     for i, f_name in enumerate(file_list, 1):
         f_base_name = bn_func(f_name)
 
         sub_dir_index = get_file_split_dir_index(i, num_split_dirs, num_files)
-        sub_dir_name = os.path.join(out_dir_path, get_sub_dir_func(sub_dir_index, num_split_dirs))
+        sub_dir_name = get_sub_dir_func(sub_dir_index, num_split_dirs)
+        sub_dir_path = os.path.join(out_dir_path, sub_dir_name)
 
-        new_f_name = os.path.join(sub_dir_name, f_base_name)
+        new_f_name = os.path.join(sub_dir_path, f_base_name)
 
         copy_or_move_func(f_name, new_f_name)
 
+        current_update_dir_index = sub_dir_index
+        if last_update_dir_index != current_update_dir_index and current_update_dir_index % n_k_print == 0:
+            logger.info('{} files into {} directory.'.format('Copying' if command == 'c' else 'Moving', sub_dir_name))
 
-@log_decorator('run dirsplitter')
+        last_update_dir_index = current_update_dir_index
+
+
 def main():
     parser = argparse.ArgumentParser(description='Directory splitter utility.')
     parser.add_argument('-in_dir', help='Directory to be split into n directories.', required=True, type=str)
